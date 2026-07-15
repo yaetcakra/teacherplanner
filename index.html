@@ -1670,8 +1670,8 @@
             "505051": { password: "candu", nama: "Joko Susilo, S.Pd.", nip: "505051", unit: "SD Negeri 2 Candimulyo", kecam: "Kertek", kabup: "Wonosobo", ttl: "Wonosobo, 2 Desember 1983", kelasDefault: "5A" },
             "505052": { password: "candu", nama: "Kartika Sari, S.Pd.", nip: "505052", unit: "SD Negeri 2 Candimulyo", kecam: "Kertek", kabup: "Wonosobo", ttl: "Wonosobo, 14 Januari 1992", kelasDefault: "5B" },
             "606061": { password: "candu", nama: "Lukman Hakim, S.Pd.", nip: "606061", unit: "SD Negeri 2 Candimulyo", kecam: "Kertek", kabup: "Wonosobo", ttl: "Wonosobo, 20 Februari 1980", kelasDefault: "6B" },
-            "MAPEL-PAI": { password: "candu", nama: "Ust. Ahmad, S.Pd.I", nip: "MAPEL-PAI", unit: "SD Negeri 2 Candimulyo", kecam: "Kertek", kabup: "Wonosobo", ttl: "Wonosobo, 1 Jan 1980", role: "mapel" },
-            "MAPEL-PJOK": { password: "candu", nama: "Coach Budi, S.Pd.", nip: "MAPEL-PJOK", unit: "SD Negeri 2 Candimulyo", kecam: "Kertek", kabup: "Wonosobo", ttl: "Wonosobo, 2 Feb 1985", role: "mapel" }
+            "MAPEL-PAI": { password: "candu", nama: "Ust. Ahmad, S.Pd.I", nip: "MAPEL-PAI", unit: "SD Negeri 2 Candimulyo", kecam: "Kertek", kabup: "Wonosobo", ttl: "Wonosobo, 1 Jan 1980", role: "mapel", mapelDiampu: "PAIBP" },
+            "MAPEL-PJOK": { password: "candu", nama: "Coach Budi, S.Pd.", nip: "MAPEL-PJOK", unit: "SD Negeri 2 Candimulyo", kecam: "Kertek", kabup: "Wonosobo", ttl: "Wonosobo, 2 Feb 1985", role: "mapel", mapelDiampu: "PJOK" }
         };
 
         const INDO_MONTHS = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
@@ -1918,6 +1918,9 @@
                     let curList = sysState[currentUser.nip][currentYear].mapelList;
                     if(curList.length === 8 && curList.includes("Pendidikan Pancasila") && curList.includes("Bahasa Indonesia")) {
                         sysState[currentUser.nip][currentYear].mapelList = [...defaultMapelList];
+                    }
+                    if (currentUser.mapelDiampu && !curList.includes(currentUser.mapelDiampu)) {
+                        sysState[currentUser.nip][currentYear].mapelList = [currentUser.mapelDiampu];
                     }
                 }
                 
@@ -3762,6 +3765,7 @@
             }
 
             let mapelList = data.mapelList || [];
+            let displayMapelList = mapelList.filter(m => m !== 'PAIBP' && m !== 'PJOK');
             let muridRaporArr = [];
             const activeSemester = document.getElementById('rapor-semester').value;
 
@@ -3773,23 +3777,26 @@
                     semExtra = { paibp: extra.paibp, pjok: extra.pjok };
                 }
 
+                let paibpAvg = getMapelFinalScoreAvg(s.nipd, 'PAIBP', activeSemester);
+                let pjokAvg = getMapelFinalScoreAvg(s.nipd, 'PJOK', activeSemester);
+
                 let item = {
                     nipd: s.nipd,
                     nama: s.nama,
-                    paibp: parseFloat(semExtra.paibp) || 0,
-                    pjok: parseFloat(semExtra.pjok) || 0,
+                    paibp: paibpAvg > 0 ? paibpAvg : (parseFloat(semExtra.paibp) || 0),
+                    pjok: pjokAvg > 0 ? pjokAvg : (parseFloat(semExtra.pjok) || 0),
                     scores: {}
                 };
 
                 let sum = item.paibp + item.pjok;
-                mapelList.forEach(m => {
+                displayMapelList.forEach(m => {
                     let scoreAvg = getMapelFinalScoreAvg(s.nipd, m, activeSemester);
                     item.scores[m] = scoreAvg;
                     sum += scoreAvg;
                 });
 
                 item.total = sum;
-                item.avg = sum / (mapelList.length + 2);
+                item.avg = sum / (displayMapelList.length + 2);
                 muridRaporArr.push(item);
             });
 
@@ -3800,7 +3807,7 @@
 
             const thead = document.querySelector('#table-rapor thead');
             let headHtml = `<tr><th>No</th><th>Nama Murid</th><th>PAIBP</th><th>PJOK</th>`;
-            mapelList.forEach(m => headHtml += `<th>${m}</th>`);
+            displayMapelList.forEach(m => headHtml += `<th>${m}</th>`);
             headHtml += `<th>Jumlah</th><th>Rata-rata</th><th>Peringkat</th></tr>`;
             thead.innerHTML = headHtml;
             
@@ -3815,13 +3822,22 @@
                     semExtra = { paibp: originalExtra.paibp, pjok: originalExtra.pjok };
                 }
 
+                let paibpAvg = getMapelFinalScoreAvg(s.nipd, 'PAIBP', activeSemester);
+                let pjokAvg = getMapelFinalScoreAvg(s.nipd, 'PJOK', activeSemester);
+
+                let paibpEditable = isRaporEditMode && (paibpAvg === 0);
+                let pjokEditable = isRaporEditMode && (pjokAvg === 0);
+
+                let paibpDisp = paibpAvg > 0 ? paibpAvg.toFixed(1) : (semExtra.paibp || '');
+                let pjokDisp = pjokAvg > 0 ? pjokAvg.toFixed(1) : (semExtra.pjok || '');
+
                 tr.innerHTML = `
                     <td class="text-center">${idx+1}</td>
                     <td style="font-weight:600;">${s.nama}</td>
-                    <td><input type="number" class="rap-paibp" value="${semExtra.paibp}" ${isRaporEditMode?'':'disabled'} style="width:60px; text-align:center; border:none; background:transparent;"></td>
-                    <td><input type="number" class="rap-pjok" value="${semExtra.pjok}" ${isRaporEditMode?'':'disabled'} style="width:60px; text-align:center; border:none; background:transparent;"></td>
+                    <td><input type="number" class="rap-paibp" value="${paibpDisp}" ${paibpEditable?'':'disabled'} style="width:60px; text-align:center; border:none; background:transparent;"></td>
+                    <td><input type="number" class="rap-pjok" value="${pjokDisp}" ${pjokEditable?'':'disabled'} style="width:60px; text-align:center; border:none; background:transparent;"></td>
                 `;
-                mapelList.forEach(m => {
+                displayMapelList.forEach(m => {
                     tr.innerHTML += `<td class="text-center">${s.scores[m].toFixed(1)}</td>`;
                 });
                 tr.innerHTML += `
@@ -3832,10 +3848,10 @@
                 tbody.appendChild(tr);
             });
 
-            appendRaporSummaryRows(muridRaporArr, mapelList);
+            appendRaporSummaryRows(muridRaporArr, displayMapelList);
         }
 
-        function appendRaporSummaryRows(arr, mapelList) {
+        function appendRaporSummaryRows(arr, displayMapelList) {
             const tbody = document.querySelector('#table-rapor tbody');
             let totalMurid = arr.length;
             
@@ -3850,7 +3866,7 @@
                 });
             };
 
-            let orderedKeys = ['paibp', 'pjok', ...mapelList, 'total', 'avg'];
+            let orderedKeys = ['paibp', 'pjok', ...displayMapelList, 'total', 'avg'];
 
             orderedKeys.forEach(k => {
                 let vals = getColData(k);

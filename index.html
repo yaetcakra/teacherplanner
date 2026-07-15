@@ -3161,6 +3161,122 @@
             tr.querySelector('.final-score-cell').textContent = avg;
         }
 
+        /* --- FUNGSI TAMBAHAN UNTUK PENILAIAN MAPEL (YANG SEBELUMNYA HILANG) --- */
+        function addPenilaianColumn() {
+            const kat = document.getElementById('nilai-kategori').value;
+            document.getElementById('tp-modal-desc').textContent = `Menambahkan kolom untuk kategori: ${kat}`;
+            
+            const selectSumber = document.getElementById('tp-select-sumber');
+            selectSumber.innerHTML = '<option value="">-- Pilih dari Data Kelola Mapel (Opsional) --</option>';
+            
+            const data = getScopedData();
+            const sem = document.getElementById('nilai-semester').value;
+            
+            // Masukkan data Bab / TP dari pengaturan Kelola Mapel jika ada
+            if (data.mapelDetail && data.mapelDetail[currentActiveMapel] && data.mapelDetail[currentActiveMapel][sem]) {
+                const details = data.mapelDetail[currentActiveMapel][sem];
+                if (kat === 'Sumatif TP' && details.tp) {
+                    details.tp.forEach(item => {
+                        selectSumber.innerHTML += `<option value="${item}">${item}</option>`;
+                    });
+                } else if (kat === 'Sumatif Bab' && details.bab) {
+                    details.bab.forEach(item => {
+                        selectSumber.innerHTML += `<option value="${item}">${item}</option>`;
+                    });
+                }
+            }
+            
+            document.getElementById('tp-input-manual').value = "";
+            document.getElementById('tambah-penilaian-modal').style.display = 'flex';
+        }
+
+        function closeTambahPenilaianModal() {
+            document.getElementById('tambah-penilaian-modal').style.display = 'none';
+        }
+
+        function confirmTambahPenilaian() {
+            const selectVal = document.getElementById('tp-select-sumber').value;
+            const manualVal = document.getElementById('tp-input-manual').value.trim();
+            const colName = manualVal || selectVal;
+            
+            if (!colName) {
+                alert("Pilih dari daftar atau ketik nama kolom penilaian secara manual!");
+                return;
+            }
+            
+            const data = getScopedData();
+            const sem = document.getElementById('nilai-semester').value;
+            const kat = document.getElementById('nilai-kategori').value;
+            
+            let mData = data.nilai[currentActiveMapel];
+            if (!mData.semesters[sem][kat].cols.includes(colName)) {
+                mData.semesters[sem][kat].cols.push(colName);
+                saveStateToStorage();
+                renderNilaiMapelTable();
+                closeTambahPenilaianModal();
+            } else {
+                alert("Kolom penilaian ini sudah ada!");
+            }
+        }
+
+        function enableEditPenilaian() {
+            isNilaiEditMode = true;
+            renderNilaiMapelTable();
+        }
+
+        function deleteAssessmentCol(colName) {
+            if (confirm(`Yakin ingin menghapus kolom penilaian "${colName}"? Semua nilai murid pada kolom ini akan ikut terhapus.`)) {
+                const data = getScopedData();
+                const sem = document.getElementById('nilai-semester').value;
+                const kat = document.getElementById('nilai-kategori').value;
+                
+                let mData = data.nilai[currentActiveMapel];
+                
+                // Hapus dari daftar kolom
+                mData.semesters[sem][kat].cols = mData.semesters[sem][kat].cols.filter(c => c !== colName);
+                
+                // Hapus nilainya dari data tiap murid
+                for (let nipd in mData.semesters[sem][kat].scores) {
+                    if (mData.semesters[sem][kat].scores[nipd][colName] !== undefined) {
+                        delete mData.semesters[sem][kat].scores[nipd][colName];
+                    }
+                }
+                
+                saveStateToStorage();
+                renderNilaiMapelTable();
+            }
+        }
+
+        function saveNilaiMapelData() {
+            const data = getScopedData();
+            const sem = document.getElementById('nilai-semester').value;
+            const kat = document.getElementById('nilai-kategori').value;
+            
+            let mData = data.nilai[currentActiveMapel];
+            const activeDataset = mData.semesters[sem][kat];
+            
+            const rows = document.querySelectorAll('#table-nilai-mapel tbody tr');
+            rows.forEach(tr => {
+                const nipd = tr.getAttribute('data-nipd');
+                if (nipd) {
+                    if (!activeDataset.scores[nipd]) activeDataset.scores[nipd] = {};
+                    
+                    const inputs = tr.querySelectorAll('.score-input');
+                    inputs.forEach(inp => {
+                        const col = inp.getAttribute('data-col');
+                        const val = inp.value.trim();
+                        activeDataset.scores[nipd][col] = val; 
+                    });
+                }
+            });
+            
+            isNilaiEditMode = false;
+            saveStateToStorage();
+            renderNilaiMapelTable();
+            alert(`Data nilai ${currentActiveMapel} (${kat}) berhasil disimpan!`);
+        }
+        /* --- AKHIR DARI FUNGSI TAMBAHAN --- */        
+
         // FUNGSI DIUPGRADE: Mendukung pembobotan global/utama kriteria Formatif, Sumatif, STS, SAS
         function getMapelFinalScoreAvg(nipd, mapel, semester) {
             const data = getScopedData();

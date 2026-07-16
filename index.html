@@ -1188,6 +1188,7 @@
                         </select>
                     </div>
                     <button class="btn btn-primary" onclick="enableEditRapor()">Ubah Data</button>
+                    <button id="btn-kirim-nilai-mapel" class="btn" onclick="kirimNilaiKeGuruKelas()" style="background-color: #8b5cf6; color: white; display: none; font-weight: bold;">📤 Kirim Nilai ke Guru Kelas</button>
                     <div class="btn-action-container">
                         <button class="btn btn-success" onclick="downloadExcel('table-rapor', 'Nilai_Rapor')">Unduh Excel</button>
                         <button class="btn btn-primary" onclick="openPrintPreview('table-rapor', 'Rekapitulasi Nilai Rapor')">Cetak PDF</button>
@@ -2092,7 +2093,20 @@
             else if(sectId === 'jadwal-pelajaran') { renderJadwalTable(); }
             else if(sectId === 'pengurus-kelas') { renderPengurusForm(); }
             else if(sectId === 'data-kehadiran') { renderKehadiranMainSect(); }
-            else if(sectId === 'nilai-rapor') { renderRaporTable(); }
+            else if(sectId === 'nilai-rapor') { 
+                const btnKirim = document.getElementById('btn-kirim-nilai-mapel');
+                const btnUbah = document.querySelector('#section-nilai-rapor button[onclick="enableEditRapor()"]');
+                if (btnKirim && btnUbah) {
+                    if (currentUser && currentUser.role === 'mapel') {
+                        btnKirim.style.display = 'inline-block';
+                        btnUbah.style.display = 'none';
+                    } else {
+                        btnKirim.style.display = 'none';
+                        btnUbah.style.display = 'inline-block';
+                    }
+                }
+                renderRaporTable(); 
+            }
             else if(sectId === 'jurnal-harian') { renderJurnalTable(); }
             else if(sectId === 'daftar-tugas') { renderTugasTable(); }
             else if(sectId === 'catatan-anekdot') { renderAnekdotTable(); }
@@ -3915,212 +3929,212 @@
             alert(`Data rekapitulasi nilai rapor (${activeSemester}) berhasil diperbarui!`);
         }
 
-        let activeGenericEditTableId = "";
-        
-        function reIndexTable(tableId) {
-            const rows = document.querySelectorAll(`#${tableId} tbody tr`);
-            let count = 1;
-            rows.forEach((tr) => {
-                const tdNo = tr.querySelector('td:first-child');
-                if (tdNo && !tr.querySelector('td[colspan]')) {
-                    tdNo.textContent = count++;
-                }
-            });
-        }
-
-        // --- JURNAL HARIAN ---
-        function renderJurnalTable() {
-            const data = getScopedData();
-            const m = document.getElementById('jurnal-filter').value;
-            const tbody = document.querySelector('#table-jurnal tbody');
-            tbody.innerHTML = "";
-
-            const isMapel = currentUser && currentUser.role === 'mapel';
-            let list = data.jurnal[m] || [];
-            if(list.length === 0) {
-                let colSpan = isMapel ? "8" : "7";
-                tbody.innerHTML = `<tr><td colspan="${colSpan}" class="text-center">Belum ada catatan jurnal pada bulan ini.</td></tr>`;
+        function kirimNilaiKeGuruKelas() {
+            if (!currentUser || currentUser.role !== 'mapel') {
+                alert("Fitur ini khusus untuk akun Guru Mata Pelajaran!");
                 return;
             }
 
-            list.forEach((item, idx) => {
-                let tr = document.createElement('tr');
+            const mapel = currentUser.mapelDiampu;
+            if (!mapel) {
+                alert("Mata pelajaran yang Anda ampu tidak terdefinisi!");
+                return;
+            }
+
+            // Temukan NIP Guru Kelas yang mengampu kelas terpilih
+            let targetGuruNip = null;
+            for (let key in ACCOUNTS) {
+                if (ACCOUNTS[key].kelasDefault === currentActiveClass && ACCOUNTS[key].role !== 'mapel') {
+                    targetGuruNip = key;
+                    break;
+                }
+            }
+            for (let nip in sysState) {
+                if (sysState[nip] && sysState[nip][currentYear]) {
+                    let userScope = sysState[nip][currentYear];
+                    if (userScope.guru && userScope.guru.kelas === currentActiveClass && userScope.guru.role !== 'mapel') {
+                        targetGuruNip = nip;
+                        break;
+                    }
+                }
+            }
+
+            if (!targetGuruNip) {
+                alert(`Tidak dapat menemukan akun Guru Kelas pengampu Kelas ${currentActiveClass} di sistem. Pastikan Guru Kelas sudah terdaftar.`);
+                return;
+            }
+
+            if (!confirm(`Kirim seluruh data nilai ${mapel} ke Guru Kelas ${currentActiveClass}?`)) {
+                return;
+            }
+
+            // Pastikan database Guru Kelas siap menampung
+            if (!sysState[targetGuruNip]) sysState[targetGuruNip] = {};
+            if (!sysState[targetGuruNip][currentYear]) {
+                let defaultMapelList = ["Pendidikan Pancasila", "Bahasa Indonesia", "Matematika", "IPAS", "Seni dan Budaya", "Bahasa Inggris", "Bahasa Daerah", "Coding"];
+                sysState[targetGuruNip][currentYear] = {
+                    guru: { nama: ACCOUNTS[targetGuruNip]?.nama || "-", nip: targetGuruNip, unit: "SD Negeri 2 Candimulyo", kecam: "Kertek", kabup: "Wonosobo", ttl: "-", kelas: currentActiveClass },
+                    murid: JSON.parse(JSON.stringify(sysState[currentUser.nip][currentYear].murid || [])),
+                    piket: Array(6).fill(["","","","","",""]),
+                    jadwal: Array(10).fill(["","","","","",""]),
+                    pengurus: { wali:"", ketua:"", wakil:"", sek1:"", sek2:"", bend1:"", bend2:"" },
+                    kehadiran: {},
+                    nilai: {},
+                    raporExtra: {},
+                    jurnal: {},
+                    tugas: {},
+                    anekdot: {},
+                    kalender: {},
+                    mapelList: [...defaultMapelList],
+                    mapelDetail: {},
+                    mapelBobot: {},
+                    globalBobot: { formatif: 30, sumatif: 30, sts: 20, sas: 20 }
+                };
+            }
+
+            // Transfer data nilai & pemetaan bab/tp
+            if (!sysState[targetGuruNip][currentYear].nilai) sysState[targetGuruNip][currentYear].nilai = {};
+            sysState[targetGuruNip][currentYear].nilai[mapel] = JSON.parse(JSON.stringify(sysState[currentUser.nip][currentYear].nilai[mapel] || { semesters: {} }));
+
+            if (!sysState[targetGuruNip][currentYear].mapelDetail) sysState[targetGuruNip][currentYear].mapelDetail = {};
+            sysState[targetGuruNip][currentYear].mapelDetail[mapel] = JSON.parse(JSON.stringify(sysState[currentUser.nip][currentYear].mapelDetail[mapel] || {}));
+
+            // Pastikan keselarasan data murid terbagi (Shared Murid)
+            if (!sysState.sharedMurid) sysState.sharedMurid = {};
+            if (!sysState.sharedMurid[currentYear]) sysState.sharedMurid[currentYear] = {};
+            sysState.sharedMurid[currentYear][currentActiveClass] = JSON.parse(JSON.stringify(sysState[currentUser.nip][currentYear].murid || []));
+            sysState[targetGuruNip][currentYear].murid = sysState.sharedMurid[currentYear][currentActiveClass];
+
+            saveStateToStorage();
+            alert(`✅ Sukses! Data nilai ${mapel} Anda telah dikirim dan disinkronkan ke Rekapitulasi Rapor Guru Kelas ${currentActiveClass}.`);
+        }
+
+        function renderRaporTable() {
+            const data = getScopedData();
+            const tbody = document.querySelector('#table-rapor tbody');
+            tbody.innerHTML = "";
+
+            if(data.murid.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="15" class="text-center">Belum ada data murid.</td></tr>`;
+                return;
+            }
+
+            const activeSemester = document.getElementById('rapor-semester').value;
+
+            // --- TAMPILAN BERSIH KHUSUS AKUN GURU MAPEL ---
+            if (currentUser && currentUser.role === 'mapel') {
+                const mapel = currentUser.mapelDiampu || "Mata Pelajaran";
                 
-                let kelasTd = '';
-                if (isMapel) {
-                    kelasTd = `
-                    <td>
-                        <select class="j-kelas" disabled style="width:100%; border:none; background:transparent; font-weight:bold; color:var(--primary-blue); appearance:none; text-align:center;">
-                            <option value="" ${!item.kelas ? 'selected' : ''}>-</option>
-                            <option value="1A" ${item.kelas==='1A' ? 'selected' : ''}>1A</option><option value="1B" ${item.kelas==='1B' ? 'selected' : ''}>1B</option>
-                            <option value="2A" ${item.kelas==='2A' ? 'selected' : ''}>2A</option><option value="2B" ${item.kelas==='2B' ? 'selected' : ''}>2B</option>
-                            <option value="3A" ${item.kelas==='3A' ? 'selected' : ''}>3A</option><option value="3B" ${item.kelas==='3B' ? 'selected' : ''}>3B</option>
-                            <option value="4A" ${item.kelas==='4A' ? 'selected' : ''}>4A</option><option value="4B" ${item.kelas==='4B' ? 'selected' : ''}>4B</option>
-                            <option value="5A" ${item.kelas==='5A' ? 'selected' : ''}>5A</option><option value="5B" ${item.kelas==='5B' ? 'selected' : ''}>5B</option>
-                            <option value="6A" ${item.kelas==='6A' ? 'selected' : ''}>6A</option><option value="6B" ${item.kelas==='6B' ? 'selected' : ''}>6B</option>
-                        </select>
-                    </td>`;
-                }
-
-                tr.innerHTML = `
-                    <td class="text-center">${idx+1}</td>
-                    <td><input type="date" value="${item.tanggal || ''}" class="j-tanggal" disabled></td>
-                    ${kelasTd}
-                    <td><input type="text" value="${item.mapel || ''}" class="j-mapel" disabled style="width:100%; border:none; background:transparent;"></td>
-                    <td><input type="text" value="${item.tp || ''}" class="j-tp" disabled style="width:100%; border:none; background:transparent;"></td>
-                    <td><input type="text" value="${item.kegiatan || ''}" class="j-kegiatan" disabled style="width:100%; border:none; background:transparent;"></td>
-                    <td><input type="text" value="${item.ket || ''}" class="j-ket" disabled style="width:100%; border:none; background:transparent;"></td>
-                    <td class="text-center"><button class="btn-delete-row" disabled onclick="deleteGenericRow(this, 'table-jurnal')">×</button></td>
+                // Set struktur header mandiri
+                const thead = document.querySelector('#table-rapor thead');
+                thead.innerHTML = `
+                    <tr>
+                        <th width="50" class="text-center">No</th>
+                        <th>Nama Murid</th>
+                        <th width="120" class="text-center">NIPD</th>
+                        <th class="text-center" style="background:#f0fdf4;">Rerata Sumatif (TP)</th>
+                        <th class="text-center" style="background:#eff6ff;">Rerata Sumatif (Bab)</th>
+                        <th class="text-center" style="background:#fefdf0;">STS</th>
+                        <th class="text-center" style="background:#fff5f5;">SAS</th>
+                        <th class="text-center bg-summary" style="color:var(--primary-blue); font-weight:bold; width:150px;">Nilai Akhir Rapor</th>
+                    </tr>
                 `;
-                tbody.appendChild(tr);
-            });
-        }
 
-        function addJurnalRow() {
-            const tbody = document.querySelector('#table-jurnal tbody');
-            if(tbody.querySelector('td[colspan]')) tbody.innerHTML = "";
+                let scoresList = [];
 
-            const isMapel = currentUser && currentUser.role === 'mapel';
-            let nextNo = tbody.children.length + 1;
-            let todayStr = new Date().toISOString().split('T')[0];
+                data.murid.forEach((s, idx) => {
+                    let mData = data.nilai[mapel];
+                    let tpAvg = 0, babAvg = 0, stsVal = 0, sasVal = 0;
 
-            let tr = document.createElement('tr');
-            
-            let kelasTd = '';
-            if (isMapel) {
-                // Pre-select default mengikuti kelas yang sedang dipilih di header
-                let currentKls = currentActiveClass || "1A";
-                kelasTd = `
-                <td>
-                    <select class="j-kelas" style="width:100%; padding:4px; font-weight:bold; color:var(--primary-blue); border:1px solid var(--border-color); border-radius:4px;">
-                        <option value="1A" ${currentKls==='1A'?'selected':''}>1A</option><option value="1B" ${currentKls==='1B'?'selected':''}>1B</option>
-                        <option value="2A" ${currentKls==='2A'?'selected':''}>2A</option><option value="2B" ${currentKls==='2B'?'selected':''}>2B</option>
-                        <option value="3A" ${currentKls==='3A'?'selected':''}>3A</option><option value="3B" ${currentKls==='3B'?'selected':''}>3B</option>
-                        <option value="4A" ${currentKls==='4A'?'selected':''}>4A</option><option value="4B" ${currentKls==='4B'?'selected':''}>4B</option>
-                        <option value="5A" ${currentKls==='5A'?'selected':''}>5A</option><option value="5B" ${currentKls==='5B'?'selected':''}>5B</option>
-                        <option value="6A" ${currentKls==='6A'?'selected':''}>6A</option><option value="6B" ${currentKls==='6B'?'selected':''}>6B</option>
-                    </select>
-                </td>`;
-            }
+                    if (mData && mData.semesters && mData.semesters[activeSemester]) {
+                        let semData = mData.semesters[activeSemester];
+                        
+                        // Formatif / TP
+                        let tpData = semData["Sumatif TP"];
+                        if (tpData && tpData.cols && tpData.cols.length > 0) {
+                            let sum = 0, count = 0;
+                            tpData.cols.forEach(c => {
+                                let v = parseFloat(tpData.scores[s.nipd]?.[c]);
+                                if (!isNaN(v)) { sum += v; count++; }
+                            });
+                            if (count > 0) tpAvg = sum / count;
+                        }
 
-            tr.innerHTML = `
-                <td class="text-center">${nextNo}</td>
-                <td><input type="date" value="${todayStr}" class="j-tanggal"></td>
-                ${kelasTd}
-                <td><input type="text" class="j-mapel" style="width:100%;" placeholder="Mata Pelajaran"></td>
-                <td><input type="text" class="j-tp" style="width:100%;" placeholder="Tujuan Pembelajaran"></td>
-                <td><input type="text" class="j-kegiatan" style="width:100%;" placeholder="Rincian Kegiatan"></td>
-                <td><input type="text" class="j-ket" style="width:100%;" placeholder="Catatan Tambahan"></td>
-                <td class="text-center"><button class="btn-delete-row" onclick="this.closest('tr').remove(); reIndexTable('table-jurnal');">×</button></td>
-            `;
-            tbody.appendChild(tr);
-            activeGenericEditTableId = "table-jurnal";
-        }
+                        // Sumatif Bab
+                        let babData = semData["Sumatif Bab"];
+                        if (babData && babData.cols && babData.cols.length > 0) {
+                            let sum = 0, count = 0;
+                            babData.cols.forEach(c => {
+                                let v = parseFloat(babData.scores[s.nipd]?.[c]);
+                                if (!isNaN(v)) { sum += v; count++; }
+                            });
+                            if (count > 0) babAvg = sum / count;
+                        }
 
-        function saveJurnalData() {
-            const data = getScopedData();
-            const m = document.getElementById('jurnal-filter').value;
-            const rows = document.querySelectorAll('#table-jurnal tbody tr');
-            const isMapel = currentUser && currentUser.role === 'mapel';
-            
-            let newList = [];
-            rows.forEach(tr => {
-                let tgl = tr.querySelector('.j-tanggal')?.value;
-                let kls = isMapel ? tr.querySelector('.j-kelas')?.value : "";
-                let mpl = tr.querySelector('.j-mapel')?.value.trim();
-                let tp = tr.querySelector('.j-tp')?.value.trim();
-                let keg = tr.querySelector('.j-kegiatan')?.value.trim();
-                let ket = tr.querySelector('.j-ket')?.value.trim();
+                        // STS
+                        let stsData = semData["STS"];
+                        if (stsData && stsData.cols && stsData.cols.length > 0) {
+                            let v = parseFloat(stsData.scores[s.nipd]?.[stsData.cols[0]]);
+                            if (!isNaN(v)) stsVal = v;
+                        }
 
-                if(tgl) {
-                    newList.push({ 
-                        tanggal: tgl, 
-                        kelas: kls || "",
-                        mapel: mpl || "", 
-                        tp: tp || "", 
-                        kegiatan: keg || "", 
-                        ket: ket || "" 
-                    });
-                }
-            });
+                        // SAS
+                        let sasData = semData["SAS"];
+                        if (sasData && sasData.cols && sasData.cols.length > 0) {
+                            let v = parseFloat(sasData.scores[s.nipd]?.[sasData.cols[0]]);
+                            if (!isNaN(v)) sasVal = v;
+                        }
+                    }
 
-            data.jurnal[m] = newList;
-            saveStateToStorage();
-            activeGenericEditTableId = "";
-            renderJurnalTable();
-            alert("Data Jurnal Harian berhasil disimpan!");
-        }
+                    let finalScore = getMapelFinalScoreAvg(s.nipd, mapel, activeSemester);
+                    scoresList.push(finalScore);
 
-        // --- DAFTAR TUGAS ---
+                    let tr = document.createElement('tr');
+                    tr.setAttribute('data-nipd', s.nipd);
+                    tr.innerHTML = `
+                        <td class="text-center">${idx+1}</td>
+                        <td style="font-weight:600;">${s.nama}</td>
+                        <td class="text-center">${s.nipd}</td>
+                        <td class="text-center">${tpAvg > 0 ? tpAvg.toFixed(1) : "-"}</td>
+                        <td class="text-center">${babAvg > 0 ? babAvg.toFixed(1) : "-"}</td>
+                        <td class="text-center">${stsVal > 0 ? stsVal.toFixed(1) : "-"}</td>
+                        <td class="text-center">${sasVal > 0 ? sasVal.toFixed(1) : "-"}</td>
+                        <td class="text-center bg-summary" style="font-weight:bold; color:var(--primary-blue);">${finalScore > 0 ? finalScore.toFixed(1) : "-"}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
 
-        function renderTugasTable() {
-            const data = getScopedData();
-            const m = document.getElementById('tugas-filter').value;
-            const tbody = document.querySelector('#table-tugas tbody');
-            tbody.innerHTML = "";
+                // Tampilkan Rangkuman Nilai Rata-rata Kelas
+                let validScores = scoresList.filter(v => v > 0);
+                let countVal = validScores.length;
+                let classAvg = countVal > 0 ? (validScores.reduce((a, b) => a + b, 0) / countVal).toFixed(1) : "-";
+                let classMax = countVal > 0 ? Math.max(...validScores).toFixed(1) : "-";
+                let classMin = countVal > 0 ? Math.min(...validScores).toFixed(1) : "-";
 
-            let list = data.tugas[m] || [];
-            if(list.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="6" class="text-center">Belum ada daftar tugas pada bulan ini.</td></tr>`;
+                tbody.innerHTML += `
+                    <tr class="bg-summary">
+                        <td colspan="3" class="text-center">Rata-rata Kelas</td>
+                        <td colspan="4"></td>
+                        <td class="text-center" style="color:var(--primary-blue);">${classAvg}</td>
+                    </tr>
+                    <tr class="bg-summary">
+                        <td colspan="3" class="text-center">Nilai Tertinggi</td>
+                        <td colspan="4"></td>
+                        <td class="text-center" style="color:var(--accent-green);">${classMax}</td>
+                    </tr>
+                    <tr class="bg-summary">
+                        <td colspan="3" class="text-center">Nilai Terendah</td>
+                        <td colspan="4"></td>
+                        <td class="text-center" style="color:var(--accent-red);">${classMin}</td>
+                    </tr>
+                `;
                 return;
             }
 
-            list.forEach((item, idx) => {
-                let tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td class="text-center">${idx+1}</td>
-                    <td><input type="date" value="${item.tgl_tugas || ''}" class="t-tgl1" disabled></td>
-                    <td><input type="date" value="${item.tgl_kumpul || ''}" class="t-tgl2" disabled></td>
-                    <td><input type="text" value="${item.rincian || ''}" class="t-rincian" disabled style="width:100%; border:none; background:transparent;"></td>
-                    <td><input type="text" value="${item.ket || ''}" class="t-ket" disabled style="width:100%; border:none; background:transparent;"></td>
-                    <td class="text-center"><button class="btn-delete-row" disabled onclick="deleteGenericRow(this, 'table-tugas')">×</button></td>
-                `;
-                tbody.appendChild(tr);
-            });
-        }
-
-        function addTugasRow() {
-            const tbody = document.querySelector('#table-tugas tbody');
-            if(tbody.querySelector('td[colspan]')) tbody.innerHTML = "";
-
-            let nextNo = tbody.children.length + 1;
-            let todayStr = new Date().toISOString().split('T')[0];
-
-            let tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td class="text-center">${nextNo}</td>
-                <td><input type="date" value="${todayStr}" class="t-tgl1"></td>
-                <td><input type="date" value="${todayStr}" class="t-tgl2"></td>
-                <td><input type="text" class="t-rincian" style="width:100%;" placeholder="Rincian Tugas"></td>
-                <td><input type="text" class="t-ket" style="width:100%;" placeholder="Keterangan"></td>
-                <td class="text-center"><button class="btn-delete-row" onclick="this.closest('tr').remove(); reIndexTable('table-tugas');">×</button></td>
-            `;
-            tbody.appendChild(tr);
-            activeGenericEditTableId = "table-tugas";
-        }
-
-        function saveTugasData() {
-            const data = getScopedData();
-            const m = document.getElementById('tugas-filter').value;
-            const rows = document.querySelectorAll('#table-tugas tbody tr');
-            
-            let newList = [];
-            rows.forEach(tr => {
-                let tgl1 = tr.querySelector('.t-tgl1')?.value;
-                let tgl2 = tr.querySelector('.t-tgl2')?.value;
-                let rinc = tr.querySelector('.t-rincian')?.value.trim();
-                let k = tr.querySelector('.t-ket')?.value.trim();
-
-                if(tgl1) {
-                    newList.push({ tgl_tugas: tgl1, tgl_kumpul: tgl2 || "", rincian: rinc || "", ket: k || "" });
-                }
-            });
-
-            data.tugas[m] = newList;
-            saveStateToStorage();
-            activeGenericEditTableId = "";
-            renderTugasTable();
-            alert("Data Daftar Tugas berhasil disimpan!");
+            // --- PROSES AWAL GURU KELAS ---
+            let mapelList = data.mapelList || [];
+            let displayMapelList = mapelList.filter(m => m !== 'PAIBP' && m !== 'PJOK');
+            let muridRaporArr = [];
         }
 
         function renderAnekdotTable() {

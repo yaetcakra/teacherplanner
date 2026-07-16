@@ -154,6 +154,7 @@
             border-top: 2px solid var(--primary-blue);
         }
 
+        /* */
         /* --- HALAMAN APLIKASI UTAMA --- */
         #app-page {
             display: none;
@@ -163,6 +164,12 @@
             grid-template-areas: 
                 "sidebar header"
                 "sidebar main";
+            transition: grid-template-columns 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* State Saat Sidebar Diminimalkan / Disembunyikan */
+        #app-page.sidebar-collapsed {
+            grid-template-columns: 0px 1fr;
         }
 
         /* Header */
@@ -217,7 +224,7 @@
             text-transform: capitalize;
         }
 
-        /* Sidebar (Fixed) */
+        /* Sidebar (Fixed dengan Animasi Geser) */
         .sidebar {
             grid-area: sidebar;
             background-color: #0f172a;
@@ -232,15 +239,26 @@
             top: 0;
             z-index: 200;
             border-right: 1px solid #1e293b;
+            transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        #app-page.sidebar-collapsed .sidebar {
+            transform: translateX(-260px);
         }
 
         .sidebar-brand {
             padding: 20px;
             display: flex;
             align-items: center;
-            gap: 10px;
+            justify-content: space-between;
             background-color: #020617;
             border-bottom: 1px solid #1e293b;
+        }
+
+        .sidebar-brand-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
 
         .sidebar-brand img {
@@ -321,13 +339,16 @@
             margin-left: 0px; /* Alokasi ruang untuk fixed sidebar */
         }
 
+        /* */
         .app-section {
             display: none;
             background: white;
             padding: 25px;
             border-radius: 8px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-            min-width: 800px; /* Menjamin layout tabel tetap rapi & men-trigger scroll horizontal jika layar sempit */
+            width: 100%; /* Fleksibel menyesuaikan lebar ruang kerja */
+            max-width: 100%;
+            overflow-x: auto; /* Scroll otomatis di level kartu jika tabel melampaui lebar layar */
             margin-bottom: 40px;
         }
 
@@ -403,6 +424,11 @@
             margin-bottom: 20px;
             font-size: 0.88rem;
             text-align: left;
+        }
+
+        /* Mengunci agar lebar minimal tabel yang padat tetap aman terbaca saat diperkecil */
+        table:not(#table-data-guru):not(#table-kelola-mapel) {
+            min-width: 750px;
         }
 
         table th, table td {
@@ -776,9 +802,17 @@
         </div>
     </div>
 
+    <!-- -->
+    <!-- Layar Latar Hitam (Backdrop) Saat Sidebar Terbuka di Mobile -->
+    <div id="sidebar-backdrop" onclick="toggleSidebar()" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.5); z-index: 150;"></div>
+
     <div id="app-page">
         <header>
             <div class="header-left">
+                <!-- Tombol Minimalkan / Maksimalkan Sidebar -->
+                <button id="toggle-sidebar-btn" onclick="toggleSidebar()" style="background: none; border: none; color: white; font-size: 1.5rem; cursor: pointer; padding: 4px 10px; margin-right: 5px; display: flex; align-items: center;" title="Minimalkan / Sembunyikan Sidebar">
+                    ☰
+                </button>
                 <img src="https://upload.wikimedia.org/wikipedia/commons/9/9c/Logo_of_Ministry_of_Education_and_Culture_of_Republic_of_Indonesia.svg" class="header-logo" alt="Logo">
                 <div class="header-title">
                     <h1>Aplikasi Teacher Planner v.2.4</h1>
@@ -809,10 +843,16 @@
 
         <div class="sidebar">
             <div class="sidebar-brand">
-                <img src="https://upload.wikimedia.org/wikipedia/commons/9/9c/Logo_of_Ministry_of_Education_and_Culture_of_Republic_of_Indonesia.svg" alt="Logo">
-                <div class="sidebar-brand-text">
-                    <h2>Teacher Planner</h2>
+                <div class="sidebar-brand-left" style="display: flex; align-items: center; gap: 10px;">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/9/9c/Logo_of_Ministry_of_Education_and_Culture_of_Republic_of_Indonesia.svg" alt="Logo">
+                    <div class="sidebar-brand-text">
+                        <h2>Teacher Planner</h2>
+                    </div>
                 </div>
+                <!-- Tombol Minimalkan Di Dalam Sidebar -->
+                <button onclick="toggleSidebar()" style="background: none; border: none; color: #94a3b8; font-size: 1.2rem; cursor: pointer; display: flex; align-items: center;" title="Sembunyikan Sidebar">
+                    ✕
+                </button>
             </div>
             <ul class="sidebar-menu">
                 <li class="menu-item active" onclick="switchSection('dashboard')">Dashboard</li>
@@ -1698,13 +1738,44 @@
         let activeSyncListener = null;
         let isUpdatingFromCloud = false;
 
+        /* */
         window.onload = function() {
             initLoginDropdowns();
             initGenericMonthDropdowns();
             loadCustomAccounts(); // Muat akun kustom yang didaftarkan
             loadStateFromStorage();
             loadFirebaseConfigFromLocal(); // Muat & hubungkan konfigurasi Firebase yang tersimpan otomatis
+            handleResize(); // Auto-collapse di awal jika dibuka pada ponsel / layar kecil
         };
+
+        // Mengendalikan Buka-Tutup Sidebar (Minimize / Maximize)
+        function toggleSidebar() {
+            const appPage = document.getElementById('app-page');
+            const backdrop = document.getElementById('sidebar-backdrop');
+            appPage.classList.toggle('sidebar-collapsed');
+            
+            const isCollapsed = appPage.classList.contains('sidebar-collapsed');
+            // Jika di tablet/hp, nyalakan backdrop saat menu terbuka
+            if (window.innerWidth < 1024) {
+                backdrop.style.display = isCollapsed ? 'none' : 'block';
+            } else {
+                backdrop.style.display = 'none';
+            }
+        }
+
+        // Penyesuaian Responsif Otomatis Berdasarkan Ukuran Jendela Layar
+        function handleResize() {
+            const appPage = document.getElementById('app-page');
+            const backdrop = document.getElementById('sidebar-backdrop');
+            if (window.innerWidth < 1024) {
+                appPage.classList.add('sidebar-collapsed');
+                backdrop.style.display = 'none';
+            } else {
+                appPage.classList.remove('sidebar-collapsed');
+                backdrop.style.display = 'none';
+            }
+        }
+        window.addEventListener('resize', handleResize);
 
         function loadCustomAccounts() {
             let customAcc = localStorage.getItem('TEACHER_PLANNER_CUSTOM_ACCOUNTS');
@@ -4542,6 +4613,33 @@
             renderDataGuru(); 
         }
 
+        function getScoreForPrint(s, subj, activeSemester, data) {
+            // 1. Ambil dari rerata modul penilaian guru mapel/kelas jika ada
+            for (let dbKey of subj.dbKeys) {
+                let scoreAvg = getMapelFinalScoreAvg(s.nipd, dbKey, activeSemester);
+                if (scoreAvg > 0) return scoreAvg;
+            }
+            // 2. Fallback ke pengisian input manual rekapitulasi raporExtra
+            let extra = data.raporExtra?.[s.nipd] || {};
+            let semExtra = extra[activeSemester] || {};
+            for (let dbKey of subj.dbKeys) {
+                let lowKey = dbKey.toLowerCase();
+                if (semExtra[lowKey] !== undefined && semExtra[lowKey] !== "") {
+                    return parseFloat(semExtra[lowKey]) || 0;
+                }
+            }
+            // 3. Dukungan kompatibilitas struktur data lama
+            if (subj.key === "PAIBP") {
+                if (semExtra.paibp !== undefined && semExtra.paibp !== "") return parseFloat(semExtra.paibp) || 0;
+                if (extra.paibp !== undefined && extra.paibp !== "") return parseFloat(extra.paibp) || 0;
+            }
+            if (subj.key === "PJOK") {
+                if (semExtra.pjok !== undefined && semExtra.pjok !== "") return parseFloat(semExtra.pjok) || 0;
+                if (extra.pjok !== undefined && extra.pjok !== "") return parseFloat(extra.pjok) || 0;
+            }
+            return 0;
+        }
+
         function openPrintPreview(tableId, title) {
             const table = document.getElementById(tableId);
             if (!table) return;
@@ -4559,6 +4657,163 @@
                     currentGuruNameInp.value = data.guru.nama || "";
                     currentGuruNipInp.value = data.guru.nip || "";
                 }
+            }
+
+            // PENANGANAN KHUSUS CETAK RAPOR GUNA MENAMPILKAN 10 MAPEL SESUAI URUTAN REKAPITULASI RESMI
+            if (tableId === 'table-rapor') {
+                const activeSemester = document.getElementById('rapor-semester') ? document.getElementById('rapor-semester').value : "Ganjil";
+                
+                // Urutan 10 Mata Pelajaran Persis Sesuai Permintaan User
+                const printedSubjects = [
+                    { key: "PAIBP", label: "Pendidikan Agama Islam dan Budi Pekerti (PAIBP)", dbKeys: ["PAIBP", "PAI", "Pendidikan Agama Islam"] },
+                    { key: "PP", label: "Pendidikan Pancasila (PP)", dbKeys: ["Pendidikan Pancasila", "PP"] },
+                    { key: "BI", label: "Bahasa Indonesia (BI)", dbKeys: ["Bahasa Indonesia", "BI"] },
+                    { key: "Mtk", label: "Matematika (Mtk)", dbKeys: ["Matematika", "Mtk"] },
+                    { key: "IPAS", label: "Ilmu Pengetahuan Alam dan Sosial (IPAS)", dbKeys: ["IPAS", "Ilmu Pengetahuan Alam dan Sosial"] },
+                    { key: "SB", label: "Seni Budaya (SB)", dbKeys: ["Seni dan Budaya", "Seni Budaya", "SB"] },
+                    { key: "PJOK", label: "Pendidikan Jasmani, Olahraga dan Kesehatan (PJOK)", dbKeys: ["PJOK", "Pendidikan Jasmani, Olahraga dan Kesehatan"] },
+                    { key: "Bing", label: "Bahasa Inggris (Bing)", dbKeys: ["Bahasa Inggris", "Bing"] },
+                    { key: "BJ", label: "Muatan Lokal: Bahasa Jawa (BJ)", dbKeys: ["Bahasa Daerah", "Bahasa Jawa", "BJ"] },
+                    { key: "KKA", label: "Koding & Kecerdasan Artifisial (KKA)", dbKeys: ["Coding", "Koding dan Kecerdasan Artifisial", "KKA"] }
+                ];
+
+                let tableHtml = `<table style="width: 100%; border-collapse: collapse; margin-top: 15px; margin-bottom: 15px;">`;
+                tableHtml += `<thead>`;
+                tableHtml += `<tr>
+                    <th rowspan="2" style="border: 1px solid black; padding: 6px; font-size: 8pt; text-align: center; font-weight: bold; background: #f1f5f9; color: black;">No</th>
+                    <th rowspan="2" style="border: 1px solid black; padding: 6px; font-size: 8pt; text-align: left; font-weight: bold; background: #f1f5f9; color: black;">Nama Murid</th>
+                    <th rowspan="2" style="border: 1px solid black; padding: 6px; font-size: 8pt; text-align: center; font-weight: bold; background: #f1f5f9; color: black;">NIPD</th>
+                    <th colspan="10" style="border: 1px solid black; padding: 6px; font-size: 8pt; text-align: center; font-weight: bold; background: #f1f5f9; color: black;">Mata Pelajaran</th>
+                    <th rowspan="2" style="border: 1px solid black; padding: 6px; font-size: 8pt; text-align: center; font-weight: bold; background: #f1f5f9; color: black;">Jumlah</th>
+                    <th rowspan="2" style="border: 1px solid black; padding: 6px; font-size: 8pt; text-align: center; font-weight: bold; background: #f1f5f9; color: black;">Rerata</th>
+                    <th rowspan="2" style="border: 1px solid black; padding: 6px; font-size: 8pt; text-align: center; font-weight: bold; background: #f1f5f9; color: black;">Rank</th>
+                </tr>`;
+                tableHtml += `<tr>`;
+                printedSubjects.forEach(s => {
+                    tableHtml += `<th style="border: 1px solid black; padding: 4px; font-size: 7.5pt; text-align: center; font-weight: bold; background: #f1f5f9; color: black;" title="${s.label}">${s.key}</th>`;
+                });
+                tableHtml += `</tr></thead>`;
+                tableHtml += `<tbody>`;
+
+                if (!data.murid || data.murid.length === 0) {
+                    tableHtml += `<tr><td colspan="16" style="border: 1px solid black; padding: 10px; text-align: center; color: black;">Belum ada data murid untuk dicetak.</td></tr>`;
+                } else {
+                    let muridScoresList = [];
+                    data.murid.forEach(s => {
+                        let item = {
+                            nipd: s.nipd,
+                            nama: s.nama,
+                            scores: {},
+                            total: 0
+                        };
+                        printedSubjects.forEach(sub => {
+                            let sc = getScoreForPrint(s, sub, activeSemester, data);
+                            item.scores[sub.key] = sc;
+                            item.total += sc;
+                        });
+                        item.avg = item.total / printedSubjects.length;
+                        muridScoresList.push(item);
+                    });
+
+                    // Urutkan peringkat rapor murid
+                    let sortedScores = [...muridScoresList].sort((a, b) => b.total - a.total);
+                    muridScoresList.forEach(s => {
+                        s.rank = sortedScores.findIndex(x => x.nipd === s.nipd) + 1;
+                    });
+
+                    muridScoresList.forEach((s, idx) => {
+                        tableHtml += `<tr>`;
+                        tableHtml += `<td style="border: 1px solid black; padding: 4px; font-size: 8pt; text-align: center; color: black;">${idx + 1}</td>`;
+                        tableHtml += `<td style="border: 1px solid black; padding: 4px; font-size: 8pt; text-align: left; font-weight: bold; color: black;">${s.nama}</td>`;
+                        tableHtml += `<td style="border: 1px solid black; padding: 4px; font-size: 8pt; text-align: center; color: black;">${s.nipd}</td>`;
+                        
+                        printedSubjects.forEach(sub => {
+                            let score = s.scores[sub.key];
+                            tableHtml += `<td style="border: 1px solid black; padding: 4px; font-size: 8pt; text-align: center; color: black;">${score > 0 ? score.toFixed(1) : "-"}</td>`;
+                        });
+
+                        tableHtml += `<td style="border: 1px solid black; padding: 4px; font-size: 8pt; text-align: center; font-weight: bold; background: #fafafa; color: black;">${s.total.toFixed(1)}</td>`;
+                        tableHtml += `<td style="border: 1px solid black; padding: 4px; font-size: 8pt; text-align: center; font-weight: bold; background: #fafafa; color: black;">${s.avg.toFixed(1)}</td>`;
+                        tableHtml += `<td style="border: 1px solid black; padding: 4px; font-size: 8pt; text-align: center; font-weight: bold; background: #fafafa; color: black;">${s.rank}</td>`;
+                        tableHtml += `</tr>`;
+                    });
+
+                    // Kalkulasi Rangkuman Kelas (Rerata, Maks, Min)
+                    let totalsBySubject = {};
+                    let maxBySubject = {};
+                    let minBySubject = {};
+                    
+                    printedSubjects.forEach(sub => {
+                        totalsBySubject[sub.key] = 0;
+                        maxBySubject[sub.key] = -Infinity;
+                        minBySubject[sub.key] = Infinity;
+                    });
+
+                    let sumTotal = 0;
+                    let sumAvg = 0;
+                    let maxTotal = -Infinity;
+                    let minTotal = Infinity;
+                    let maxAvg = -Infinity;
+                    let minAvg = Infinity;
+
+                    muridScoresList.forEach(s => {
+                        printedSubjects.forEach(sub => {
+                            let sc = s.scores[sub.key];
+                            totalsBySubject[sub.key] += sc;
+                            if (sc > maxBySubject[sub.key]) maxBySubject[sub.key] = sc;
+                            if (sc < minBySubject[sub.key]) minBySubject[sub.key] = sc;
+                        });
+                        sumTotal += s.total;
+                        sumAvg += s.avg;
+                        if (s.total > maxTotal) maxTotal = s.total;
+                        if (s.total < minTotal) minTotal = s.total;
+                        if (s.avg > maxAvg) maxAvg = s.avg;
+                        if (s.avg < minAvg) minAvg = s.avg;
+                    });
+
+                    // Rerata Kelas
+                    tableHtml += `<tr style="font-weight: bold; background: #f8fafc; color: black;">`;
+                    tableHtml += `<td colspan="3" style="border: 1px solid black; padding: 4px; font-size: 8pt; text-align: center; color: black;">Rerata Kelas</td>`;
+                    printedSubjects.forEach(sub => {
+                        let classAvgSub = totalsBySubject[sub.key] / muridScoresList.length;
+                        tableHtml += `<td style="border: 1px solid black; padding: 4px; font-size: 8pt; text-align: center; color: black;">${classAvgSub.toFixed(1)}</td>`;
+                    });
+                    tableHtml += `<td style="border: 1px solid black; padding: 4px; font-size: 8pt; text-align: center; color: black;">${(sumTotal / muridScoresList.length).toFixed(1)}</td>`;
+                    tableHtml += `<td style="border: 1px solid black; padding: 4px; font-size: 8pt; text-align: center; color: black;">${(sumAvg / muridScoresList.length).toFixed(1)}</td>`;
+                    tableHtml += `<td style="border: 1px solid black; padding: 4px; font-size: 8pt; text-align: center; color: black;">-</td>`;
+                    tableHtml += `</tr>`;
+
+                    // Nilai Tertinggi
+                    tableHtml += `<tr style="font-weight: bold; background: #f8fafc; color: black;">`;
+                    tableHtml += `<td colspan="3" style="border: 1px solid black; padding: 4px; font-size: 8pt; text-align: center; color: black;">Nilai Tertinggi</td>`;
+                    printedSubjects.forEach(sub => {
+                        tableHtml += `<td style="border: 1px solid black; padding: 4px; font-size: 8pt; text-align: center; color: black;">${maxBySubject[sub.key].toFixed(1)}</td>`;
+                    });
+                    tableHtml += `<td style="border: 1px solid black; padding: 4px; font-size: 8pt; text-align: center; color: black;">${maxTotal.toFixed(1)}</td>`;
+                    tableHtml += `<td style="border: 1px solid black; padding: 4px; font-size: 8pt; text-align: center; color: black;">${maxAvg.toFixed(1)}</td>`;
+                    tableHtml += `<td style="border: 1px solid black; padding: 4px; font-size: 8pt; text-align: center; color: black;">-</td>`;
+                    tableHtml += `</tr>`;
+
+                    // Nilai Terendah
+                    tableHtml += `<tr style="font-weight: bold; background: #f8fafc; color: black;">`;
+                    tableHtml += `<td colspan="3" style="border: 1px solid black; padding: 4px; font-size: 8pt; text-align: center; color: black;">Nilai Terendah</td>`;
+                    printedSubjects.forEach(sub => {
+                        tableHtml += `<td style="border: 1px solid black; padding: 4px; font-size: 8pt; text-align: center; color: black;">${minBySubject[sub.key].toFixed(1)}</td>`;
+                    });
+                    tableHtml += `<td style="border: 1px solid black; padding: 4px; font-size: 8pt; text-align: center; color: black;">${minTotal.toFixed(1)}</td>`;
+                    tableHtml += `<td style="border: 1px solid black; padding: 4px; font-size: 8pt; text-align: center; color: black;">${minAvg.toFixed(1)}</td>`;
+                    tableHtml += `<td style="border: 1px solid black; padding: 4px; font-size: 8pt; text-align: center; color: black;">-</td>`;
+                    tableHtml += `</tr>`;
+                }
+
+                tableHtml += `</tbody></table>`;
+                
+                const container = document.getElementById('preview-table-container');
+                container.innerHTML = tableHtml;
+
+                document.getElementById('print-preview-modal').style.display = 'flex';
+                updateLivePrintPreview();
+                return; 
             }
 
             const cloneTable = table.cloneNode(true);
@@ -5016,6 +5271,245 @@
             }
         }
 
+        function reIndexTable(tableId) {
+            const rows = document.querySelectorAll(`#${tableId} tbody tr`);
+            rows.forEach((row, idx) => {
+                const firstCell = row.querySelector('td:first-child');
+                if (firstCell) {
+                    firstCell.textContent = idx + 1;
+                }
+            });
+        }
+
+        function deleteGenericRow(btn, tableId) {
+            btn.closest('tr').remove();
+            reIndexTable(tableId);
+        }
+
+        function renderJurnalTable() {
+            const data = getScopedData();
+            const m = document.getElementById('jurnal-filter').value;
+            const tbody = document.querySelector('#table-jurnal tbody');
+            tbody.innerHTML = "";
+
+            const thKelas = document.getElementById('th-jurnal-kelas');
+            if (currentUser && currentUser.role === 'mapel') {
+                if (thKelas) thKelas.style.display = 'table-cell';
+            } else {
+                if (thKelas) thKelas.style.display = 'none';
+            }
+
+            let list = data.jurnal[m] || [];
+            if(list.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="${(currentUser && currentUser.role === 'mapel') ? 8 : 7}" class="text-center">Belum ada jurnal harian pada bulan ini.</td></tr>`;
+                return;
+            }
+
+            list.forEach((item, idx) => {
+                let tr = document.createElement('tr');
+                
+                let mapelOptions = "";
+                data.mapelList.forEach(mapel => {
+                    mapelOptions += `<option value="${mapel}" ${item.mapel === mapel ? 'selected' : ''}>${mapel}</option>`;
+                });
+
+                let classTd = "";
+                if (currentUser && currentUser.role === 'mapel') {
+                    classTd = `
+                        <td>
+                            <select class="j-kelas" disabled style="width:100%; border:none; background:transparent; appearance:none;">
+                                <option value="1A" ${item.kelas === '1A' ? 'selected' : ''}>1A</option>
+                                <option value="1B" ${item.kelas === '1B' ? 'selected' : ''}>1B</option>
+                                <option value="2A" ${item.kelas === '2A' ? 'selected' : ''}>2A</option>
+                                <option value="2B" ${item.kelas === '2B' ? 'selected' : ''}>2B</option>
+                                <option value="3A" ${item.kelas === '3A' ? 'selected' : ''}>3A</option>
+                                <option value="3B" ${item.kelas === '3B' ? 'selected' : ''}>3B</option>
+                                <option value="4A" ${item.kelas === '4A' ? 'selected' : ''}>4A</option>
+                                <option value="4B" ${item.kelas === '4B' ? 'selected' : ''}>4B</option>
+                                <option value="5A" ${item.kelas === '5A' ? 'selected' : ''}>5A</option>
+                                <option value="5B" ${item.kelas === '5B' ? 'selected' : ''}>5B</option>
+                                <option value="6A" ${item.kelas === '6A' ? 'selected' : ''}>6A</option>
+                                <option value="6B" ${item.kelas === '6B' ? 'selected' : ''}>6B</option>
+                            </select>
+                        </td>
+                    `;
+                }
+
+                tr.innerHTML = `
+                    <td class="text-center">${idx+1}</td>
+                    <td><input type="date" value="${item.tanggal}" class="j-tanggal" disabled style="width:100%; border:none; background:transparent;"></td>
+                    ${classTd}
+                    <td>
+                        <select class="j-mapel" disabled style="width:100%; border:none; background:transparent; appearance:none;">
+                            ${mapelOptions}
+                        </select>
+                    </td>
+                    <td><input type="text" value="${item.tp || ''}" class="j-tp" disabled style="width:100%; border:none; background:transparent;"></td>
+                    <td><input type="text" value="${item.kegiatan || ''}" class="j-kegiatan" disabled style="width:100%; border:none; background:transparent;"></td>
+                    <td><input type="text" value="${item.ket || ''}" class="j-ket" disabled style="width:100%; border:none; background:transparent;"></td>
+                    <td class="text-center"><button class="btn-delete-row" disabled onclick="deleteGenericRow(this, 'table-jurnal')">×</button></td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function addJurnalRow() {
+            const tbody = document.querySelector('#table-jurnal tbody');
+            if(tbody.querySelector('td[colspan]')) tbody.innerHTML = "";
+
+            const data = getScopedData();
+            let nextNo = tbody.children.length + 1;
+            let todayStr = new Date().toISOString().split('T')[0];
+
+            let mapelOptions = "";
+            data.mapelList.forEach(mapel => {
+                mapelOptions += `<option value="${mapel}">${mapel}</option>`;
+            });
+
+            let classTd = "";
+            if (currentUser && currentUser.role === 'mapel') {
+                classTd = `
+                    <td>
+                        <select class="j-kelas" style="width:100%; padding:4px; border:1px solid var(--border-color); border-radius:4px;">
+                            <option value="1A" ${currentActiveClass === '1A' ? 'selected' : ''}>1A</option>
+                            <option value="1B" ${currentActiveClass === '1B' ? 'selected' : ''}>1B</option>
+                            <option value="2A" ${currentActiveClass === '2A' ? 'selected' : ''}>2A</option>
+                            <option value="2B" ${currentActiveClass === '2B' ? 'selected' : ''}>2B</option>
+                            <option value="3A" ${currentActiveClass === '3A' ? 'selected' : ''}>3A</option>
+                            <option value="3B" ${currentActiveClass === '3B' ? 'selected' : ''}>3B</option>
+                            <option value="4A" ${currentActiveClass === '4A' ? 'selected' : ''}>4A</option>
+                            <option value="4B" ${currentActiveClass === '4B' ? 'selected' : ''}>4B</option>
+                            <option value="5A" ${currentActiveClass === '5A' ? 'selected' : ''}>5A</option>
+                            <option value="5B" ${currentActiveClass === '5B' ? 'selected' : ''}>5B</option>
+                            <option value="6A" ${currentActiveClass === '6A' ? 'selected' : ''}>6A</option>
+                            <option value="6B" ${currentActiveClass === '6B' ? 'selected' : ''}>6B</option>
+                        </select>
+                    </td>
+                `;
+            }
+
+            let tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="text-center">${nextNo}</td>
+                <td><input type="date" value="${todayStr}" class="j-tanggal" style="width:100%; padding:4px; border:1px solid var(--border-color); border-radius:4px;"></td>
+                ${classTd}
+                <td>
+                    <select class="j-mapel" style="width:100%; padding:4px; border:1px solid var(--border-color); border-radius:4px;">
+                        ${mapelOptions}
+                    </select>
+                </td>
+                <td><input type="text" class="j-tp" style="width:100%; padding:4px; border:1px solid var(--border-color); border-radius:4px;"></td>
+                <td><input type="text" class="j-kegiatan" style="width:100%; padding:4px; border:1px solid var(--border-color); border-radius:4px;"></td>
+                <td><input type="text" class="j-ket" style="width:100%; padding:4px; border:1px solid var(--border-color); border-radius:4px;"></td>
+                <td class="text-center"><button class="btn-delete-row" onclick="this.closest('tr').remove(); reIndexTable('table-jurnal');">×</button></td>
+            `;
+            tbody.appendChild(tr);
+        }
+
+        function saveJurnalData() {
+            const data = getScopedData();
+            const m = document.getElementById('jurnal-filter').value;
+            const rows = document.querySelectorAll('#table-jurnal tbody tr');
+            
+            let newList = [];
+            rows.forEach(tr => {
+                let tgl = tr.querySelector('.j-tanggal')?.value;
+                let mapel = tr.querySelector('.j-mapel')?.value;
+                let tp = tr.querySelector('.j-tp')?.value.trim();
+                let kegiatan = tr.querySelector('.j-kegiatan')?.value.trim();
+                let ket = tr.querySelector('.j-ket')?.value.trim();
+                let kelas = tr.querySelector('.j-kelas')?.value || "";
+
+                if(tgl) {
+                    newList.push({ 
+                        tanggal: tgl, 
+                        mapel: mapel || "", 
+                        tp: tp || "", 
+                        kegiatan: kegiatan || "", 
+                        ket: ket || "",
+                        kelas: kelas
+                    });
+                }
+            });
+
+            data.jurnal[m] = newList;
+            saveStateToStorage();
+            renderJurnalTable();
+            alert("Data Jurnal Harian berhasil disimpan!");
+        }
+
+        function renderTugasTable() {
+            const data = getScopedData();
+            const m = document.getElementById('tugas-filter').value;
+            const tbody = document.querySelector('#table-tugas tbody');
+            tbody.innerHTML = "";
+
+            let list = data.tugas[m] || [];
+            if(list.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="text-center">Belum ada daftar tugas pada bulan ini.</td></tr>`;
+                return;
+            }
+
+            list.forEach((item, idx) => {
+                let tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="text-center">${idx+1}</td>
+                    <td><input type="date" value="${item.tglPenugasan || ''}" class="t-tgl-penugasan" disabled style="width:100%; border:none; background:transparent;"></td>
+                    <td><input type="date" value="${item.tglPengumpulan || ''}" class="t-tgl-pengumpulan" disabled style="width:100%; border:none; background:transparent;"></td>
+                    <td><input type="text" value="${item.rincian || ''}" class="t-rincian" disabled style="width:100%; border:none; background:transparent;"></td>
+                    <td><input type="text" value="${item.ket || ''}" class="t-ket" disabled style="width:100%; border:none; background:transparent;"></td>
+                    <td class="text-center"><button class="btn-delete-row" disabled onclick="deleteGenericRow(this, 'table-tugas')">×</button></td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function addTugasRow() {
+            const tbody = document.querySelector('#table-tugas tbody');
+            if(tbody.querySelector('td[colspan]')) tbody.innerHTML = "";
+
+            let nextNo = tbody.children.length + 1;
+            let todayStr = new Date().toISOString().split('T')[0];
+
+            let tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="text-center">${nextNo}</td>
+                <td><input type="date" value="${todayStr}" class="t-tgl-penugasan" style="width:100%; padding:4px; border:1px solid var(--border-color); border-radius:4px;"></td>
+                <td><input type="date" value="${todayStr}" class="t-tgl-pengumpulan" style="width:100%; padding:4px; border:1px solid var(--border-color); border-radius:4px;"></td>
+                <td><input type="text" class="t-rincian" style="width:100%; padding:4px; border:1px solid var(--border-color); border-radius:4px;"></td>
+                <td><input type="text" class="t-ket" style="width:100%; padding:4px; border:1px solid var(--border-color); border-radius:4px;"></td>
+                <td class="text-center"><button class="btn-delete-row" onclick="this.closest('tr').remove(); reIndexTable('table-tugas');">×</button></td>
+            `;
+            tbody.appendChild(tr);
+        }
+
+        function saveTugasData() {
+            const data = getScopedData();
+            const m = document.getElementById('tugas-filter').value;
+            const rows = document.querySelectorAll('#table-tugas tbody tr');
+            
+            let newList = [];
+            rows.forEach(tr => {
+                let tglPenugasan = tr.querySelector('.t-tgl-penugasan')?.value;
+                let tglPengumpulan = tr.querySelector('.t-tgl-pengumpulan')?.value;
+                let rincian = tr.querySelector('.t-rincian')?.value.trim();
+                let ket = tr.querySelector('.t-ket')?.value.trim();
+
+                if(tglPenugasan) {
+                    newList.push({ 
+                        tglPenugasan: tglPenugasan, 
+                        tglPengumpulan: tglPengumpulan || "", 
+                        rincian: rincian || "", 
+                        ket: ket || "" 
+                    });
+                }
+            });
+
+            data.tugas[m] = newList;
+            saveStateToStorage();
+            renderTugasTable();
+            alert("Data Daftar Tugas berhasil disimpan!");
+        }
 
     </script>
 </body>

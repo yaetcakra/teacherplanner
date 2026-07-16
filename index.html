@@ -1947,16 +1947,22 @@
             let shared = sysState.sharedMurid[currentYear][activeClass] || [];
             let local = data.murid || [];
 
-            // Gabungkan data lama dan baru (berdasarkan NIPD) agar tidak ada data yang hilang saat pertama transisi
-            if (shared !== local) {
-                let map = new Map();
-                [...shared, ...local].forEach(m => {
-                    if(m && m.nipd) map.set(m.nipd, m); // NIPD sebagai kunci mutlak
-                });
-                sysState.sharedMurid[currentYear][activeClass] = Array.from(map.values());
+            // PERBAIKAN UTAMA: Jika login sebagai guru mapel, data murid hanya diambil murni dari shared kelas tersebut 
+            // agar data antar kelas yang berbeda (misal 6B dan 1A) tidak tercampur atau terakumulasi secara ganda.
+            if (currentUser.role === 'mapel') {
+                sysState.sharedMurid[currentYear][activeClass] = shared;
+            } else {
+                // Gabungkan data lama dan baru (berdasarkan NIPD) untuk guru kelas demi menjaga transisi data migrasi pertama
+                if (shared !== local) {
+                    let map = new Map();
+                    [...shared, ...local].forEach(m => {
+                        if(m && m.nipd) map.set(m.nipd, m); // NIPD sebagai kunci mutlak
+                    });
+                    sysState.sharedMurid[currentYear][activeClass] = Array.from(map.values());
+                }
             }
 
-            // Arahkan array murid ke kolam kelas gabungan ini
+            // Arahkan array murid ke kolam kelas gabungan ini secara dinamis
             data.murid = sysState.sharedMurid[currentYear][activeClass];
 
             return data;
